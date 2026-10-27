@@ -1498,6 +1498,8 @@ function findRubricForItem(item){
 /* ============================================================
    STORAGE HELPERS
    ============================================================ */
+// All Keli 2026 events are held on this one date; used wherever a schedule has no date set.
+const DEFAULT_EVENT_DATE = '2026-11-07';
 let SCHOOLS = [];
 let STUDENTS = []; // {id, regNo, name, schoolId, schoolName}
 let ENTRIES = [];
@@ -3242,7 +3244,7 @@ function renderVenuesTable(){
       <td class="malayalam">${i.name}</td>
       <td><span class="badge ${i.cat}">${i.cat}</span></td>
       <td><input type="text" class="ven-venue" value="${s.venue||''}" placeholder="വേദിയുടെ പേര്" style="width:120px;"></td>
-      <td><input type="date" class="ven-date" value="${s.date||''}" style="width:135px;"></td>
+      <td><input type="date" class="ven-date" value="${s.date||DEFAULT_EVENT_DATE}" style="width:135px;"></td>
       <td><input type="time" class="ven-time" value="${s.time||''}" style="width:100px;"></td>
     </tr>`;
   }).join('') || `<tr><td colspan="6" class="empty">ഇനങ്ങൾ ലഭ്യമല്ല</td></tr>`;
@@ -3301,7 +3303,7 @@ function renderScheduleReport(){
       <td style="padding:6px 8px;border:1px solid #eee;">${r.item.code}</td>
       <td style="padding:6px 8px;border:1px solid #eee;">${r.item.name}</td>
       <td style="padding:6px 8px;border:1px solid #eee;">${r.item.cat}</td>
-      <td style="padding:6px 8px;border:1px solid #eee;">${r.date||'-'}</td>
+      <td style="padding:6px 8px;border:1px solid #eee;">${r.date||DEFAULT_EVENT_DATE}</td>
       <td style="padding:6px 8px;border:1px solid #eee;">${fmt12(r.time)}</td>
     </tr>`;
   });
@@ -3336,7 +3338,7 @@ function fmt12(t){
 /* Schedule report for ALL venues in one PDF (continuous, in venue-number order) - available to every login */
 function downloadAllVenuesSchedulePDF(){
   const rows = Object.entries(SCHEDULE)
-    .map(([code,sc])=>({item:ITEMS.find(i=>i.code===parseInt(code)), venue:sc.venue||'', date:sc.date||'', time:sc.time||''}))
+    .map(([code,sc])=>({item:ITEMS.find(i=>i.code===parseInt(code)), venue:sc.venue||'', date:sc.date||DEFAULT_EVENT_DATE, time:sc.time||''}))
     .filter(r=>r.item && r.venue);
   if(!rows.length){ toast('ഷെഡ്യൂൾ ലഭ്യമല്ല'); return; }
   const byVenue = {};
@@ -3350,7 +3352,7 @@ function downloadAllVenuesSchedulePDF(){
       <h3 style="font-family:'Baloo 2','Noto Sans Malayalam',sans-serif;color:#0d4d47;margin:0 0 6px;page-break-after:avoid;">വേദി: ${v}</h3>
       <table style="width:100%;border-collapse:collapse;font-size:12px;">
         <thead><tr><th style="${th}">കോഡ്</th><th style="${th}">ഇനം</th><th style="${th}">കാറ്റ.</th><th style="${th}">തീയതി</th><th style="${th}">സമയം</th></tr></thead>
-        <tbody>${list.map(r=>`<tr style="page-break-inside:avoid;"><td style="${td}">${r.item.code}</td><td style="${td}">${r.item.name}</td><td style="${td}">${r.item.cat}</td><td style="${td}">${r.date||'-'}</td><td style="${td}">${fmt12(r.time)}</td></tr>`).join('')}</tbody>
+        <tbody>${list.map(r=>`<tr style="page-break-inside:avoid;"><td style="${td}">${r.item.code}</td><td style="${td}">${r.item.name}</td><td style="${td}">${r.item.cat}</td><td style="${td}">${r.date||DEFAULT_EVENT_DATE}</td><td style="${td}">${fmt12(r.time)}</td></tr>`).join('')}</tbody>
       </table></div>`;
   }).join('');
   // Render on a visible white overlay (same technique as the ID-card PDF) - an off-screen
@@ -4043,7 +4045,7 @@ function downloadItemWiseExcel(){
 function venueWiseData(){
   return Object.entries(SCHEDULE).map(([code,s])=>{
     const item = ITEMS.find(i=>i.code===parseInt(code));
-    return item ? {venue:s.venue||'-', date:s.date||'-', time:s.time||'-', code:item.code, name:item.name, cat:item.cat} : null;
+    return item ? {venue:s.venue||'-', date:s.date||DEFAULT_EVENT_DATE, time:s.time||'-', code:item.code, name:item.name, cat:item.cat} : null;
   }).filter(Boolean).sort((a,b)=> cmpVenue(a.venue,b.venue) || a.date.localeCompare(b.date) || a.time.localeCompare(b.time));
 }
 function renderVenueWiseReport(){
@@ -4275,16 +4277,11 @@ function idCardQR(student){
   }catch(err){ return ''; }
 }
 
-// One festival date for all events: use the date(s) of this student's scheduled items,
-// falling back to the most common date in the whole schedule.
+// One festival date for all events (default 7 Nov 2026 unless the schedule sets another).
 function idCardDate(entries){
   const fmt = d=>{ const m=/^(\d{4})-(\d{2})-(\d{2})$/.exec(d||''); return m ? `${m[3]}-${m[2]}-${m[1]}` : (d||''); };
-  const own = [...new Set(entries.map(e=>(SCHEDULE[e.itemCode]||{}).date).filter(Boolean))].sort();
-  if(own.length) return own.map(fmt).join(', ');
-  const cnt = {};
-  Object.values(SCHEDULE||{}).forEach(s=>{ if(s && s.date) cnt[s.date]=(cnt[s.date]||0)+1; });
-  const top = Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0];
-  return top ? fmt(top) : '-';
+  const own = [...new Set(entries.map(e=>(SCHEDULE[e.itemCode]||{}).date || DEFAULT_EVENT_DATE))].sort();
+  return fmt(own.length ? own.join(', ').split(', ')[0] : DEFAULT_EVENT_DATE) + (own.length>1 ? own.slice(1).map(d=>', '+fmt(d)).join('') : '');
 }
 
 function buildIdCardHTML(student){
@@ -4455,7 +4452,7 @@ function pdfPopulateFilters(){
   if(venues.includes(prevVenue)) venueSel.value = prevVenue;
 
   const dateSel = document.getElementById('pdfFilterDate');
-  const dates = Array.from(new Set(Object.values(SCHEDULE).map(s=>s.date).filter(Boolean))).sort();
+  const dates = Array.from(new Set(Object.values(SCHEDULE).map(s=>s.date||DEFAULT_EVENT_DATE).filter(Boolean))).sort();
   const prevDate = dateSel.value;
   dateSel.innerHTML = '<option value="">എല്ലാ തീയതികളും</option>' + dates.map(d=>`<option value="${d}">${d}</option>`).join('');
   if(dates.includes(prevDate)) dateSel.value = prevDate;
@@ -4480,7 +4477,7 @@ function pdfFilteredItems(){
       const s = SCHEDULE[i.code];
       if(!s) return false;
       if(venue && s.venue!==venue) return false;
-      if(date && s.date!==date) return false;
+      if(date && (s.date||DEFAULT_EVENT_DATE)!==date) return false;
       return true;
     });
   }
@@ -4511,7 +4508,7 @@ function pdfEventMetaTable(item){
   const s = SCHEDULE[item.code]||{};
   return `<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px;">
     <tr><td style="padding:3px 6px;"><b>ഇനം കോഡ്:</b> ${item.code}</td><td style="padding:3px 6px;"><b>ഇനം:</b> ${item.name}</td><td style="padding:3px 6px;"><b>കാറ്റഗറി:</b> ${item.cat}</td></tr>
-    <tr><td style="padding:3px 6px;"><b>വേദി:</b> ${s.venue||'-'}</td><td style="padding:3px 6px;"><b>തീയതി:</b> ${s.date||'-'}</td><td style="padding:3px 6px;"><b>സമയം:</b> ${fmt12(s.time)}</td></tr>
+    <tr><td style="padding:3px 6px;"><b>വേദി:</b> ${s.venue||'-'}</td><td style="padding:3px 6px;"><b>തീയതി:</b> ${s.date||DEFAULT_EVENT_DATE}</td><td style="padding:3px 6px;"><b>സമയം:</b> ${fmt12(s.time)}</td></tr>
   </table>`;
 }
 
@@ -4594,7 +4591,7 @@ function buildMarkSheetSection(item){
   const catEnglish = ({I:'PRATHMIK',II:'SISU',III:'BALA',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
   const pageLabel = String(item.code).slice(-3) || item.code;
   const venue = s.venue || '-';
-  const date = s.date || '-';
+  const date = s.date || DEFAULT_EVENT_DATE;
   const time = fmt12(s.time);
   const rubric = findRubricForItem(item);
 
@@ -4671,7 +4668,7 @@ function buildTabulationSheetSection(item){
   const catEnglish = ({I:'PRATHMIK',II:'SISU',III:'BALA',IV:'THARUN',V:'COMMON'})[item.cat] || item.cat;
   const pageLabel = String(item.code).slice(-3) || item.code;
   const venue = s.venue || '-';
-  const date = s.date || '-';
+  const date = s.date || DEFAULT_EVENT_DATE;
   const time = fmt12(s.time);
   const jHeaders = keys.map((k,idx)=>`<th style="padding:2px;border:1px solid #111;">${idx+1}</th>`).join('');
   const rows = Array.from({length:rowsCount},(_,idx)=>{
